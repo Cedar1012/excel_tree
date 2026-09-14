@@ -1,0 +1,2356 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>项目台账 · 支持企业 / 执行方</title>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --ink: #152033;
+      --muted: #5b6b7d;
+      --line: #e2e8f0;
+      --paper: #ffffff;
+      --left: #1d4f86;
+      --left-soft: #e8f1f8;
+      --right: #0f766e;
+      --right-soft: #e7f6f3;
+      --gold: #b45309;
+      --rose: #be123c;
+      --shadow: 0 18px 50px rgba(21, 32, 51, 0.08);
+      --radius: 18px;
+      --font: "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+      --display: "Source Han Serif SC", "Noto Serif SC", "Songti SC", "SimSun", serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      font-family: var(--font);
+      color: var(--ink);
+      background:
+        radial-gradient(1100px 520px at 0% -10%, #d7e6f4 0%, transparent 55%),
+        radial-gradient(900px 480px at 100% 0%, #d9efe9 0%, transparent 50%),
+        linear-gradient(165deg, #f4f7fb 0%, #eef2f6 52%, #f3eee6 100%);
+    }
+
+    .app {
+      width: min(1280px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 26px 0 72px;
+    }
+
+    header.top {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--left);
+      font-size: 12px;
+      letter-spacing: 0.18em;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 28px;
+      height: 2px;
+      background: linear-gradient(90deg, var(--left), var(--right));
+    }
+
+    h1 {
+      font-family: var(--display);
+      font-size: clamp(28px, 4vw, 40px);
+      line-height: 1.12;
+      font-weight: 700;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 14px;
+      margin-top: 8px;
+      max-width: 46em;
+      line-height: 1.6;
+    }
+
+    .file-status {
+      margin-top: 8px;
+      font-size: 12.5px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .file-status.ok { color: #166534; }
+    .file-status.warn { color: #9a3412; }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(110px, 1fr));
+      gap: 10px;
+    }
+
+    .stat {
+      background: rgba(255,255,255,0.78);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.9);
+      border-radius: 16px;
+      padding: 12px 14px;
+      box-shadow: var(--shadow);
+      min-width: 0;
+    }
+
+    .stat b {
+      display: block;
+      font-size: 20px;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.02em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .stat span { color: var(--muted); font-size: 12px; }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      background: var(--paper);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      box-shadow: var(--shadow);
+      border: 1px solid rgba(255,255,255,0.85);
+      margin-bottom: 14px;
+    }
+
+    .search {
+      flex: 1 1 240px;
+      position: relative;
+    }
+
+    .search input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 11px 13px 11px 38px;
+      font: inherit;
+      outline: none;
+      background: #f8fafc;
+    }
+
+    .search input:focus {
+      border-color: #7aa7c4;
+      box-shadow: 0 0 0 4px rgba(29, 79, 134, 0.12);
+      background: #fff;
+    }
+
+    .search::before {
+      content: "⌕";
+      position: absolute;
+      left: 13px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #8aa0b3;
+      font-size: 16px;
+    }
+
+    button, .file-btn {
+      border: 0;
+      cursor: pointer;
+      font: inherit;
+      border-radius: 12px;
+      padding: 11px 15px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: transform 0.15s ease, filter 0.2s, background 0.2s;
+    }
+
+    button:active, .file-btn:active { transform: translateY(1px); }
+    [hidden] { display: none !important; }
+
+    .file-btn { position: relative; overflow: hidden; }
+    .file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #163a63, #1d4f86 48%, #2b6ea8);
+      color: #fff;
+      box-shadow: 0 10px 22px rgba(29, 79, 134, 0.24);
+    }
+
+    .btn-teal {
+      background: linear-gradient(135deg, #0b5e57, #0f766e 50%, #149387);
+      color: #fff;
+      box-shadow: 0 10px 22px rgba(15, 118, 110, 0.22);
+    }
+
+    .btn-secondary {
+      background: #fff;
+      color: var(--ink);
+      border: 1px solid var(--line);
+    }
+
+    .btn-ghost { background: transparent; color: var(--muted); }
+    .btn-danger { background: #fff1f2; color: var(--rose); border: 1px solid #fecdd3; }
+    .btn-tiny {
+      padding: 6px 10px;
+      border-radius: 9px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .table-card {
+      background: var(--paper);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      border: 1px solid rgba(255,255,255,0.85);
+      overflow: hidden;
+    }
+
+    .table-scroll {
+      overflow: auto;
+      max-height: min(68vh, 760px);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      min-width: 1280px;
+    }
+
+    thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #f7fafc;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 750;
+      text-align: left;
+      padding: 12px 12px;
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+
+    tbody td {
+      padding: 13px 12px;
+      border-bottom: 1px solid #eef2f6;
+      font-size: 13.5px;
+      vertical-align: middle;
+    }
+
+    thead th:last-child,
+    tbody td:last-child {
+      position: sticky;
+      right: 0;
+      background: #fff;
+      box-shadow: -8px 0 12px rgba(21, 32, 51, 0.04);
+      z-index: 1;
+    }
+
+    thead th:last-child { background: #f7fafc; z-index: 3; }
+
+    tbody tr { cursor: pointer; transition: background 0.15s; }
+    tbody tr:hover { background: #f4f8fb; }
+    tbody tr.active { background: #eaf3fb; }
+
+    .name {
+      font-weight: 750;
+      max-width: 220px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .money { font-variant-numeric: tabular-nums; font-weight: 650; }
+    .muted { color: var(--muted); }
+
+    .ops { display: flex; flex-wrap: wrap; gap: 6px; max-width: 280px; }
+    .ops button { cursor: pointer; }
+    .btn-copy {
+      background: #eef6fb;
+      color: #1d4f86;
+      border: 1px solid #d3e4f0;
+    }
+    .btn-copy:hover { filter: brightness(0.98); }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 750;
+      background: #eef2f6;
+      color: #475569;
+    }
+
+    .st-洽谈中 { background: #eef2ff; color: #3730a3; }
+    .st-已签约 { background: #e0f2fe; color: #075985; }
+    .st-执行中 { background: #ccfbf1; color: #0f766e; }
+    .st-回款中 { background: #fef3c7; color: #92400e; }
+    .st-已完成 { background: #dcfce7; color: #166534; }
+    .st-已暂停 { background: #f1f5f9; color: #475569; }
+    .st-已取消 { background: #ffe4e6; color: #9f1239; }
+
+    .empty {
+      padding: 64px 24px;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    .empty h3 {
+      font-family: var(--display);
+      color: var(--ink);
+      font-size: 24px;
+      margin-bottom: 6px;
+    }
+
+    .drawer-mask {
+      position: fixed;
+      inset: 0;
+      background: rgba(12, 20, 32, 0.58);
+      backdrop-filter: blur(7px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+      z-index: 40;
+    }
+
+    .drawer-mask.show { opacity: 1; pointer-events: auto; }
+
+    .drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      height: 100%;
+      width: min(760px, 100%);
+      background: #f6f8fb;
+      box-shadow: -24px 0 80px rgba(0,0,0,0.18);
+      transform: translateX(28px);
+      opacity: 0;
+      pointer-events: none;
+      transition: transform 0.28s ease, opacity 0.28s ease;
+      z-index: 50;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .drawer-mask.show + .drawer {
+      transform: none;
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .drawer-head {
+      padding: 18px 22px 14px;
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .drawer-head h2 {
+      font-family: var(--display);
+      font-size: 24px;
+    }
+
+    .drawer-head p { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+
+    .drawer-body {
+      overflow: auto;
+      padding: 16px;
+      flex: 1;
+    }
+
+    .color-stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    .pane {
+      background: #fff;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      overflow: hidden;
+    }
+
+    .pane-head {
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .pane-head h3 { font-size: 14px; font-weight: 800; }
+    .pane-head small { margin-left: auto; font-size: 12px; opacity: 0.78; font-weight: 650; }
+
+    .count-pill {
+      min-width: 28px;
+      height: 28px;
+      padding: 0 7px;
+      border-radius: 9px;
+      display: grid;
+      place-items: center;
+      font-size: 12px;
+      font-weight: 800;
+      background: rgba(255,255,255,0.35);
+    }
+
+    .pane.g-info { border-color: #d5dde6; }
+    .pane.g-info .pane-head { background: #eef2f6; color: #334155; }
+
+    .pane.g-cyan { border-color: #9ee0ea; }
+    .pane.g-cyan .pane-head { background: #c8f3f8; color: #0e5f6b; }
+    .pane.g-cyan .fields { background: #f3fcfd; }
+
+    .pane.g-blue { border-color: #5ec4ea; }
+    .pane.g-blue .pane-head { background: #00b0f0; color: #fff; }
+    .pane.g-blue .count-pill { background: rgba(255,255,255,0.22); }
+    .pane.g-blue .fields { background: #e8f7fd; }
+
+    .pane.g-yellow { border-color: #f3e26a; }
+    .pane.g-yellow .pane-head { background: #ffe500; color: #5b4a00; }
+    .pane.g-yellow .fields { background: #fffce8; }
+
+    .pane.g-green { border-color: #8bc34a; }
+    .pane.g-green .pane-head { background: #92d050; color: #1f4d12; }
+    .pane.g-green .fields { background: #f3fae8; }
+
+    .pane.g-orange { border-color: #f0a36a; }
+    .pane.g-orange .pane-head { background: #ed7d31; color: #fff; }
+    .pane.g-orange .count-pill { background: rgba(255,255,255,0.22); }
+    .pane.g-orange .fields { background: #fff4ec; }
+
+    .pane.g-peach { border-color: #f3c49a; }
+    .pane.g-peach .pane-head { background: #ffcc99; color: #7c3a10; }
+    .pane.g-peach .fields { background: #fff6ee; }
+
+    .fields { padding: 14px 16px 16px; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px 12px;
+    }
+
+    .field { display: grid; gap: 5px; }
+    .field.full { grid-column: 1 / -1; }
+
+    label {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 11px;
+      padding: 10px 12px;
+      font: inherit;
+      color: var(--ink);
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: #7aa7c4;
+      box-shadow: 0 0 0 4px rgba(29, 79, 134, 0.12);
+    }
+
+    input[readonly],
+    input:disabled,
+    select:disabled {
+      background: #f8fafc;
+      color: #334155;
+      font-weight: 700;
+    }
+
+    .login-gate {
+      position: fixed;
+      inset: 0;
+      z-index: 120;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background:
+        radial-gradient(1100px 520px at 0% -10%, #d7e6f4 0%, transparent 55%),
+        radial-gradient(900px 480px at 100% 0%, #d9efe9 0%, transparent 50%),
+        linear-gradient(165deg, #f4f7fb 0%, #eef2f6 52%, #f3eee6 100%);
+    }
+
+    .login-gate[hidden] { display: none !important; }
+
+    .login-card {
+      width: min(440px, 100%);
+      background: rgba(255,255,255,0.92);
+      border: 1px solid rgba(255,255,255,0.9);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      padding: 28px 26px 22px;
+    }
+
+    .login-card h1 {
+      font-family: var(--display);
+      font-size: 30px;
+      margin: 0 0 8px;
+    }
+
+    .login-card .login-desc {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+      margin-bottom: 18px;
+    }
+
+    .login-card .field { margin-bottom: 12px; }
+    .login-error {
+      display: none;
+      margin: 0 0 12px;
+      padding: 9px 11px;
+      border-radius: 11px;
+      background: #fff1f2;
+      color: var(--rose);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .login-error.show { display: block; }
+
+    .login-hint {
+      margin-top: 14px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: #f8fafc;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .login-hint code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      color: var(--ink);
+    }
+
+    .user-chip {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .role-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      background: #e8f1f8;
+      color: var(--left);
+    }
+
+    .role-pill.company { background: #e8f1f8; color: #1d4f86; }
+    .role-pill.executor { background: #e7f6f3; color: #0f766e; }
+    .role-pill.signOwner { background: #fff7ed; color: #9a3412; }
+    .role-pill.admin { background: #eef2ff; color: #3730a3; }
+
+    .user-meta {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .user-meta b { color: var(--ink); font-size: 13px; }
+
+    .pane.is-hidden,
+    .field.is-hidden { display: none !important; }
+
+    .account-mask {
+      position: fixed;
+      inset: 0;
+      background: rgba(12, 20, 32, 0.5);
+      backdrop-filter: blur(6px);
+      display: none;
+      place-items: center;
+      z-index: 70;
+      padding: 18px;
+    }
+
+    .account-mask.show { display: grid; }
+
+    .account-panel {
+      width: min(760px, 100%);
+      background: #fff;
+      border-radius: 18px;
+      box-shadow: 0 24px 70px rgba(0,0,0,0.2);
+      overflow: hidden;
+      max-height: min(86vh, 820px);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .account-panel header {
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .account-panel header h3 { font-family: var(--display); font-size: 22px; }
+    .account-panel header p { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+
+    .account-form {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px 12px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      background: #f8fafc;
+    }
+
+    .account-form .full { grid-column: 1 / -1; }
+
+    .account-list {
+      overflow: auto;
+      padding: 8px;
+      flex: 1;
+    }
+
+    .account-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 12px;
+      align-items: center;
+    }
+
+    .account-item:nth-child(odd) { background: #f7fafc; }
+    .account-item .meta b { display: block; font-size: 14px; }
+    .account-item .meta span { color: var(--muted); font-size: 12px; }
+    .account-item .ops { max-width: none; }
+
+    .drawer-actions {
+      padding: 14px 18px 16px;
+      background: #fff;
+      border-top: 1px solid var(--line);
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .hint { margin-left: auto; color: var(--muted); font-size: 12px; }
+
+    .draft-bar {
+      margin: 0 16px 12px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: #fff7ed;
+      color: #9a3412;
+      font-size: 13px;
+      font-weight: 650;
+      border: 1px solid #fed7aa;
+      display: none;
+    }
+
+    .draft-bar.show { display: block; }
+
+    .backup-mask {
+      position: fixed;
+      inset: 0;
+      background: rgba(12, 20, 32, 0.5);
+      backdrop-filter: blur(6px);
+      display: none;
+      place-items: center;
+      z-index: 70;
+      padding: 18px;
+    }
+
+    .backup-mask.show { display: grid; }
+
+    .backup-panel {
+      width: min(560px, 100%);
+      background: #fff;
+      border-radius: 18px;
+      box-shadow: 0 24px 70px rgba(0,0,0,0.2);
+      overflow: hidden;
+    }
+
+    .backup-panel header {
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .backup-panel header h3 { font-family: var(--display); font-size: 22px; }
+    .backup-panel header p { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+
+    .backup-list {
+      max-height: 52vh;
+      overflow: auto;
+      padding: 8px;
+    }
+
+    .backup-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 12px;
+    }
+
+    .backup-item:nth-child(odd) { background: #f7fafc; }
+
+    .backup-item .meta { flex: 1; min-width: 0; }
+    .backup-item .meta b { display: block; font-size: 14px; }
+    .backup-item .meta span { color: var(--muted); font-size: 12px; }
+
+    .backup-empty {
+      padding: 36px 16px;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      transform: translateX(-50%) translateY(16px);
+      background: var(--ink);
+      color: #fff;
+      padding: 11px 16px;
+      border-radius: 999px;
+      font-size: 13px;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.25s ease;
+      z-index: 80;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    @media (max-width: 980px) {
+      .stats { grid-template-columns: repeat(2, 1fr); width: 100%; }
+      header.top { flex-direction: column; align-items: stretch; }
+      .grid { grid-template-columns: 1fr 1fr; }
+      .hint { width: 100%; margin-left: 0; }
+      .account-form { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="login-gate" id="loginGate">
+    <form class="login-card" id="loginForm" autocomplete="on">
+      <div class="eyebrow">PROJECT LEDGER</div>
+      <h1>登录项目台账</h1>
+      <p class="login-desc">先登录再进入同一张总表。页面会按账号隐藏行和字段，这是前端限制，不是服务端保密。</p>
+      <div class="login-error" id="loginError">账号或密码不对</div>
+      <div class="field">
+        <label for="loginUser">账号</label>
+        <input id="loginUser" name="username" type="text" required autocomplete="username" />
+      </div>
+      <div class="field">
+        <label for="loginPass">密码</label>
+        <input id="loginPass" name="password" type="password" required autocomplete="current-password" />
+      </div>
+      <button type="submit" class="btn-primary" style="width:100%;margin-top:6px">进入台账</button>
+      <div class="login-hint">
+        默认管理员：<code>admin</code> / <code>admin123</code><br />
+        其他角色：登录后点「账号」添加，或把账号写进页面里的 <code>BUILTIN_USERS</code> 再发布。绑定名称必须和表格完全一致。
+      </div>
+    </form>
+  </div>
+
+  <div class="app" id="appRoot" hidden>
+    <header class="top">
+      <div>
+        <div class="eyebrow">PROJECT LEDGER</div>
+        <h1>项目台账</h1>
+        <p class="subtitle" id="pageSubtitle">登录后按权限查看同一张总表。</p>
+        <p class="file-status" id="fileStatus">数据先存在浏览器。第一次保存时选一次表格即可。</p>
+      </div>
+      <div class="stats">
+        <div class="stat"><b id="statCount">0</b><span id="statCountLabel">项目条数</span></div>
+        <div class="stat"><b id="statSign">0.00</b><span id="statSignLabel">企业签约合计</span></div>
+        <div class="stat"><b id="statReceived">0.00</b><span id="statReceivedLabel">企业已回款</span></div>
+        <div class="stat"><b id="statPending">0.00</b><span id="statPendingLabel">执行方待回款</span></div>
+      </div>
+    </header>
+
+    <div class="toolbar">
+      <div class="user-chip">
+        <span class="role-pill admin" id="rolePill">管理员</span>
+        <div class="user-meta">
+          <b id="userNameLabel">未登录</b>
+          <div id="userBindLabel">—</div>
+        </div>
+        <button type="button" class="btn-secondary btn-tiny" id="usersBtn" hidden>账号</button>
+        <button type="button" class="btn-ghost btn-tiny" id="logoutBtn">退出</button>
+      </div>
+      <div class="search">
+        <input id="searchInput" type="search" placeholder="搜索项目名称、支持企业、执行方、负责人…" />
+      </div>
+      <button type="button" class="btn-primary" id="newBtn">新建项目</button>
+      <label class="file-btn btn-secondary" id="importBtn">
+        导入 Excel
+        <input id="importFile" type="file" accept=".xlsx,.xls,.csv" />
+      </label>
+      <button type="button" class="btn-teal" id="exportBtn">导出 Excel</button>
+      <button type="button" class="btn-danger" id="clearAllBtn">全部清空</button>
+    </div>
+
+    <div class="table-card">
+      <div class="table-scroll" id="tableWrap"></div>
+    </div>
+  </div>
+
+  <div class="drawer-mask" id="drawerMask"></div>
+  <aside class="drawer" id="drawer" aria-hidden="true">
+    <div class="drawer-head">
+      <div>
+        <h2 id="drawerTitle">新建项目</h2>
+        <p id="drawerSub">填写后保存，记录会追加到表格末尾</p>
+      </div>
+      <button type="button" class="btn-ghost" id="closeDrawerBtn">关闭</button>
+    </div>
+    <form class="drawer-body" id="entryForm" autocomplete="off">
+      <div class="draft-bar" id="draftBar">检测到未完成填写，已为你恢复。</div>
+      <div class="color-stack" id="colorFields"></div>
+    </form>
+    <div class="drawer-actions">
+      <button type="submit" form="entryForm" class="btn-primary" id="saveBtn">保存并追加</button>
+      <button type="button" class="btn-copy" id="copyFullBtn">整条拷贝</button>
+      <button type="button" class="btn-copy" id="copyLineBtn">单行拷贝</button>
+      <button type="button" class="btn-secondary" id="resetFormBtn">清空表单</button>
+      <button type="button" class="btn-danger" id="deleteCurrentBtn" hidden>删除本条</button>
+      <span class="hint">点外侧空白不会关闭。未保存内容会自动暂存，下次点「新建项目」可继续填。</span>
+    </div>
+  </aside>
+
+  <div class="backup-mask" id="backupMask">
+    <div class="backup-panel" role="dialog" aria-modal="true">
+      <header>
+        <h3>清空备份</h3>
+        <p>每次「全部清空」都会先存一份。最多保留 20 次，可恢复或重新下载。</p>
+      </header>
+      <div class="backup-list" id="backupList"></div>
+      <div class="drawer-actions">
+        <button type="button" class="btn-secondary" id="closeBackupBtn">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="account-mask" id="accountMask">
+    <div class="account-panel" role="dialog" aria-modal="true">
+      <header>
+        <h3>账号管理</h3>
+        <p>绑定名称必须和表格里的「支持企业 / 项目执行方 / 签约负责人」完全一致。本机添加只存在当前浏览器；要让别人登录，请把账号写进页面里的 <code>BUILTIN_USERS</code> 再发布。</p>
+      </header>
+      <form class="account-form" id="accountForm">
+        <div class="field">
+          <label for="accUser">账号</label>
+          <input id="accUser" name="username" type="text" required />
+        </div>
+        <div class="field">
+          <label for="accPass">密码</label>
+          <input id="accPass" name="password" type="text" required />
+        </div>
+        <div class="field">
+          <label for="accRole">角色</label>
+          <select id="accRole" name="role">
+            <option value="admin">管理员 · 全部项目</option>
+            <option value="company">支持企业 · 按公司名过滤</option>
+            <option value="executor">执行方 · 按执行方过滤</option>
+            <option value="signOwner">签约负责人 · 按负责人过滤</option>
+          </select>
+        </div>
+        <div class="field full">
+          <label for="accBind">绑定名称</label>
+          <input id="accBind" name="bind" type="text" placeholder="企业填公司名，执行方填执行方名称，负责人填签约负责人姓名。管理员可空。" />
+        </div>
+        <div class="full" style="display:flex;gap:10px;align-items:center">
+          <button type="submit" class="btn-primary" id="accSaveBtn">添加账号</button>
+          <button type="button" class="btn-secondary" id="accResetBtn">取消编辑</button>
+        </div>
+      </form>
+      <div class="account-list" id="accountList"></div>
+      <div class="drawer-actions">
+        <button type="button" class="btn-secondary" id="closeAccountBtn">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const STORAGE_KEY = "excel_tree_project_ledger_v2";
+    const DRAFT_KEY = "excel_tree_project_ledger_draft_v3";
+    const BACKUP_KEY = "excel_tree_project_ledger_backups_v2";
+    const USERS_KEY = "excel_tree_project_ledger_users_v1";
+    const SESSION_KEY = "excel_tree_project_ledger_session_v1";
+    const BACKUP_LIMIT = 20;
+    const STATUS_OPTIONS = ["洽谈中", "已签约", "执行中", "回款中", "已完成", "已暂停", "已取消"];
+    // GitHub Pages 上请直接改这份名单后提交，别人才能用这些账号登录。
+    // role: admin | company | executor | signOwner
+    // bind: 必须和表格里的「支持企业 / 项目执行方 / 签约负责人」完全一致。
+    const BUILTIN_USERS = [
+      { username: "admin", password: "admin123", role: "admin", bind: "" }
+      // { username: "acme", password: "acme123", role: "company", bind: "某某药业" },
+      // { username: "exec1", password: "exec123", role: "executor", bind: "安正心" },
+      // { username: "li", password: "li123", role: "signOwner", bind: "李四" }
+    ];
+    const ROLE_META = {
+      admin: { label: "管理员", pill: "admin", desc: "可看全部项目，可改全部字段。" },
+      company: { label: "支持企业", pill: "company", desc: "只看「支持企业」等于自己公司的项目，主要填写企业经费和回款。" },
+      executor: { label: "执行方", pill: "executor", desc: "只看「项目执行方」等于自己的项目，主要填写执行协议、回款和已支付。" },
+      signOwner: { label: "签约负责人", pill: "signOwner", desc: "只看「签约负责人」是自己的项目，主要填写项目基本信息。" }
+    };
+    const ROLE_ACCESS = {
+      admin: {
+        groups: ["info", "cyan", "blue", "yellow", "green", "orange", "peach"],
+        edit: "*",
+        tableCols: ["diseaseArea", "projectName", "supportCompany", "status", "signAmount", "received", "paymentProgress", "execParty", "pendingAmount"],
+        canCreate: true,
+        canDelete: true,
+        canImport: true,
+        canExport: true,
+        canClear: true,
+        canManageUsers: true,
+        rowField: null
+      },
+      company: {
+        groups: ["info", "cyan", "blue"],
+        extraFields: ["execParty"],
+        edit: ["diseaseArea", "projectName", "supportCompany", "hcoName", "signOwner", "projectType", "nature", "presenter", "signTime", "endTime", "status", "signAmount", "manageFee", "execFee", "coordFee", "taxFee", "paymentProgress", "received", "receiveTime", "receivedManage", "receivedExec", "receivedCoord", "receivedTax", "execParty"],
+        tableCols: ["diseaseArea", "projectName", "supportCompany", "status", "signAmount", "received", "paymentProgress", "execParty"],
+        canCreate: true,
+        canDelete: true,
+        canImport: false,
+        canExport: true,
+        canClear: false,
+        canManageUsers: false,
+        rowField: "supportCompany"
+      },
+      executor: {
+        groups: ["info", "yellow", "green", "orange", "peach"],
+        extraFields: [],
+        edit: ["diseaseArea", "projectName", "supportCompany", "hcoName", "projectType", "nature", "presenter", "status", "execParty", "execOwner", "execSignTime", "execSignAmount", "execManageFee", "execCoordFee", "execExecFee", "execTaxFee", "execReceived", "execReceiveTime", "execReceivedManage", "execReceivedExec", "execReceivedCoord", "execReceivedTax", "paidSupplier", "paidLabor"],
+        tableCols: ["diseaseArea", "projectName", "supportCompany", "status", "execParty", "execSignAmount", "execReceived", "pendingAmount"],
+        canCreate: true,
+        canDelete: false,
+        canImport: false,
+        canExport: true,
+        canClear: false,
+        canManageUsers: false,
+        rowField: "execParty"
+      },
+      signOwner: {
+        groups: ["info"],
+        extraFields: ["execParty"],
+        edit: ["diseaseArea", "projectName", "supportCompany", "hcoName", "signOwner", "projectType", "nature", "presenter", "signTime", "endTime", "status", "execParty"],
+        tableCols: ["diseaseArea", "projectName", "supportCompany", "status", "signOwner", "execParty"],
+        canCreate: true,
+        canDelete: false,
+        canImport: false,
+        canExport: true,
+        canClear: false,
+        canManageUsers: false,
+        rowField: "signOwner"
+      }
+    };
+    const TABLE_COL_META = {
+      diseaseArea: { label: "疾病领域", money: false },
+      projectName: { label: "项目名称", money: false, name: true },
+      supportCompany: { label: "支持企业", money: false },
+      status: { label: "项目状态", money: false, badge: true },
+      signOwner: { label: "签约负责人", money: false },
+      signAmount: { label: "签约金额", money: true },
+      received: { label: "已回款", money: true },
+      paymentProgress: { label: "回款进度", money: false },
+      execParty: { label: "项目执行方", money: false },
+      execSignAmount: { label: "执行签约金额", money: true },
+      execReceived: { label: "执行已回款", money: true },
+      pendingAmount: { label: "待回款金额", money: true }
+    };
+
+    const COLOR_GROUPS = [
+      {
+        id: "info",
+        tone: "g-info",
+        title: "项目基本信息",
+        note: "白底列 A–K",
+        fields: [
+          { key: "diseaseArea", label: "疾病领域", type: "text" },
+          { key: "projectName", label: "项目名称", type: "text", full: true },
+          { key: "supportCompany", label: "支持企业", type: "text", full: true },
+          { key: "hcoName", label: "企业双签HCO", type: "text", full: true },
+          { key: "signOwner", label: "签约负责人", type: "text" },
+          { key: "projectType", label: "项目类型", type: "text" },
+          { key: "nature", label: "性质", type: "text" },
+          { key: "presenter", label: "项目介绍人", type: "text" },
+          { key: "signTime", label: "签约时间", type: "date" },
+          { key: "endTime", label: "协议终止时间", type: "date" },
+          { key: "status", label: "项目状态", type: "select" }
+        ]
+      },
+      {
+        id: "cyan",
+        tone: "g-cyan",
+        title: "企业双签HCO经费情况",
+        note: "浅青 L–P",
+        fields: [
+          { key: "signAmount", label: "签约金额", type: "money" },
+          { key: "manageFee", label: "管理费", type: "money" },
+          { key: "execFee", label: "执行费", type: "money" },
+          { key: "coordFee", label: "统筹费", type: "money" },
+          { key: "taxFee", label: "税费", type: "money" }
+        ]
+      },
+      {
+        id: "blue",
+        tone: "g-blue",
+        title: "企业双签HCO回款",
+        note: "蓝色 Q–W",
+        fields: [
+          { key: "paymentProgress", label: "回款进度", type: "text" },
+          { key: "received", label: "已回款", type: "money" },
+          { key: "receiveTime", label: "回款时间", type: "date" },
+          { key: "receivedManage", label: "已回管理费", type: "money" },
+          { key: "receivedExec", label: "已回执行费", type: "money" },
+          { key: "receivedCoord", label: "已回统筹费", type: "money" },
+          { key: "receivedTax", label: "已回税费", type: "money" }
+        ]
+      },
+      {
+        id: "yellow",
+        tone: "g-yellow",
+        title: "企业双签HCO与安正心的执行协议金额",
+        note: "黄色 X–AE",
+        fields: [
+          { key: "execParty", label: "项目执行方", type: "text", full: true },
+          { key: "execOwner", label: "执行负责人", type: "text" },
+          { key: "execSignTime", label: "签约时间", type: "date" },
+          { key: "execSignAmount", label: "签约金额", type: "money" },
+          { key: "execManageFee", label: "管理费", type: "money" },
+          { key: "execCoordFee", label: "统筹费", type: "money" },
+          { key: "execExecFee", label: "执行费", type: "money" },
+          { key: "execTaxFee", label: "税费", type: "money" }
+        ]
+      },
+      {
+        id: "green",
+        tone: "g-green",
+        title: "执行协议已回款",
+        note: "绿色 AF–AK",
+        fields: [
+          { key: "execReceived", label: "已回款", type: "money" },
+          { key: "execReceiveTime", label: "回款时间", type: "date" },
+          { key: "execReceivedManage", label: "已回管理费", type: "money" },
+          { key: "execReceivedExec", label: "已回执行费", type: "money" },
+          { key: "execReceivedCoord", label: "已回统筹费", type: "money" },
+          { key: "execReceivedTax", label: "已回税费", type: "money" }
+        ]
+      },
+      {
+        id: "orange",
+        tone: "g-orange",
+        title: "已支付",
+        note: "橙色 AL–AM · 供应商执行费+劳务费",
+        fields: [
+          { key: "paidSupplier", label: "已支付供应商执行费", type: "money", full: true },
+          { key: "paidLabor", label: "已支付劳务费", type: "money" }
+        ]
+      },
+      {
+        id: "peach",
+        tone: "g-peach",
+        title: "待回款项",
+        note: "浅橙 AN–AR · 自动计算",
+        fields: [
+          { key: "pendingAmount", label: "待回款金额", type: "money", computed: true },
+          { key: "pendingManage", label: "待回管理费", type: "money", computed: true },
+          { key: "pendingExec", label: "待回执行费", type: "money", computed: true },
+          { key: "pendingCoord", label: "待回统筹费", type: "money", computed: true },
+          { key: "pendingTax", label: "待回税费", type: "money", computed: true }
+        ]
+      }
+    ];
+
+    const ALL_FIELDS = COLOR_GROUPS.flatMap((g) => g.fields);
+    const EXPORT_TOP = ["企业双签HCO经费情况", "企业双签HCO与安正心的执行协议金额"];
+    const HEADER_MARKERS = ["疾病领域", "项目名称", "项目执行方", "待回税费"];
+
+    let state = loadState();
+    let currentUser = null;
+    let editingId = null;
+    let editingAccount = null;
+    let query = "";
+    let formDirty = false;
+    let fileHandle = null;
+    let persistTimer = 0;
+    const HANDLE_DB = "excel_tree_fs";
+    const HANDLE_STORE = "handles";
+    const EXCEL_NAME = "项目管理表格-全员.xlsx";
+
+    const toastEl = document.getElementById("toast");
+    const drawerMask = document.getElementById("drawerMask");
+    const drawer = document.getElementById("drawer");
+
+    function todayStr() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    }
+
+    function stampNow() {
+      const d = new Date();
+      const p = (n) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+    }
+
+    function loadBackups() {
+      try {
+        const raw = localStorage.getItem(BACKUP_KEY);
+        const list = raw ? JSON.parse(raw) : [];
+        return Array.isArray(list) ? list : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function persistBackups(list) {
+      localStorage.setItem(BACKUP_KEY, JSON.stringify(list.slice(0, BACKUP_LIMIT)));
+    }
+
+    function uid() {
+      return "p_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return { rows: [] };
+        const parsed = JSON.parse(raw);
+        return { rows: Array.isArray(parsed.rows) ? parsed.rows : [] };
+      } catch {
+        return { rows: [] };
+      }
+    }
+
+    function normName(s) {
+      return String(s ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+    }
+
+    function loadUsers() {
+      let stored = [];
+      try {
+        const raw = localStorage.getItem(USERS_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(parsed)) stored = parsed;
+      } catch {}
+      const map = new Map();
+      BUILTIN_USERS.forEach((u) => {
+        if (u && u.username) map.set(u.username, { ...u });
+      });
+      stored.forEach((u) => {
+        if (u && u.username) map.set(u.username, { ...(map.get(u.username) || {}), ...u });
+      });
+      if (!map.has("admin")) map.set("admin", { ...BUILTIN_USERS[0] });
+      return Array.from(map.values());
+    }
+
+    function persistUsers(list) {
+      localStorage.setItem(USERS_KEY, JSON.stringify(list));
+    }
+
+    function isBuiltinUser(username) {
+      return BUILTIN_USERS.some((u) => u.username === username);
+    }
+
+    function roleOf(user) {
+      return (user && ROLE_ACCESS[user.role]) ? user.role : "";
+    }
+
+    function access() {
+      return ROLE_ACCESS[roleOf(currentUser)] || {
+        groups: [],
+        extraFields: [],
+        edit: [],
+        tableCols: [],
+        canCreate: false,
+        canDelete: false,
+        canImport: false,
+        canExport: false,
+        canClear: false,
+        canManageUsers: false,
+        rowField: null
+      };
+    }
+
+    function canEditField(key) {
+      const a = access();
+      if (a.edit === "*") return true;
+      return (a.edit || []).includes(key);
+    }
+
+    function groupOfField(key) {
+      return COLOR_GROUPS.find((g) => g.fields.some((f) => f.key === key));
+    }
+
+    function canSeeGroup(id) {
+      const a = access();
+      if ((a.groups || []).includes(id)) return true;
+      const extra = a.extraFields || [];
+      const g = COLOR_GROUPS.find((x) => x.id === id);
+      return !!(g && g.fields.some((f) => extra.includes(f.key)));
+    }
+
+    function canSeeField(key) {
+      const a = access();
+      if (a.edit === "*") return true;
+      if ((a.extraFields || []).includes(key)) return true;
+      const g = groupOfField(key);
+      return !!(g && (a.groups || []).includes(g.id));
+    }
+
+    function bindMatches(rowValue, bind) {
+      const a = normName(rowValue);
+      const b = normName(bind);
+      return !!a && !!b && a === b;
+    }
+
+    function visibleRows() {
+      if (!currentUser) return [];
+      const a = access();
+      if (!a.rowField) return state.rows.slice();
+      const bind = currentUser.bind;
+      if (!normName(bind)) return [];
+      return state.rows.filter((r) => bindMatches(r[a.rowField], bind));
+    }
+
+    function applyRoleToNewRow(row) {
+      const a = access();
+      if (a.rowField && currentUser && currentUser.bind) {
+        if (!String(row[a.rowField] || "").trim()) row[a.rowField] = currentUser.bind;
+      }
+      return row;
+    }
+
+    function mergeWritable(target, incoming) {
+      const next = { ...target };
+      ALL_FIELDS.forEach((f) => {
+        if (f.computed) return;
+        if (!canEditField(f.key)) return;
+        next[f.key] = incoming[f.key];
+      });
+      next.id = target.id || incoming.id;
+      return next;
+    }
+
+    function exportableRows() {
+      return visibleRows();
+    }
+
+    function loadSession() {
+      try {
+        const raw = sessionStorage.getItem(SESSION_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        const users = loadUsers();
+        return users.find((u) => u.username === parsed.username) || null;
+      } catch {
+        return null;
+      }
+    }
+
+    function saveSession(user) {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify({ username: user.username }));
+    }
+
+    function clearSession() {
+      sessionStorage.removeItem(SESSION_KEY);
+    }
+
+    function computePending(row) {
+      const pairs = [
+        ["execSignAmount", "execReceived", "pendingAmount"],
+        ["execManageFee", "execReceivedManage", "pendingManage"],
+        ["execExecFee", "execReceivedExec", "pendingExec"],
+        ["execCoordFee", "execReceivedCoord", "pendingCoord"],
+        ["execTaxFee", "execReceivedTax", "pendingTax"]
+      ];
+      pairs.forEach(([a, b, out]) => {
+        if (String(row[a] ?? "") === "" && String(row[b] ?? "") === "") row[out] = "";
+        else row[out] = (money(row[a]) - money(row[b])).toFixed(2);
+      });
+      return row;
+    }
+
+    function persist() {
+      state.rows.forEach(computePending);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      renderTable();
+      updateStats();
+      if (currentUser && roleOf(currentUser) === "admin") ensureFileThenSave();
+    }
+
+    async function ensureFileThenSave() {
+      if (!fileHandle) {
+        const ok = await bindExcel({ fromSave: true });
+        if (!ok) {
+          setFileStatus("已保存在浏览器。第一次保存请选中同目录 Excel，之后会自动写回。", false);
+          return;
+        }
+      }
+      await writeBoundFile(false);
+    }
+
+    function idbReq(mode, fn) {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(HANDLE_DB, 1);
+        req.onupgradeneeded = () => req.result.createObjectStore(HANDLE_STORE);
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => {
+          const db = req.result;
+          const tx = db.transaction(HANDLE_STORE, mode);
+          const store = tx.objectStore(HANDLE_STORE);
+          const out = fn(store);
+          out.onsuccess = () => resolve(out.result);
+          out.onerror = () => reject(out.error);
+        };
+      });
+    }
+
+    function loadHandle() {
+      return idbReq("readonly", (store) => store.get("xlsx")).catch(() => null);
+    }
+
+    function saveHandle(handle) {
+      return idbReq("readwrite", (store) => store.put(handle, "xlsx"));
+    }
+
+    function scheduleFileSave() {
+      clearTimeout(persistTimer);
+      persistTimer = setTimeout(() => writeBoundFile(false), 80);
+    }
+
+    async function ensurePermission(handle) {
+      if (!handle || !handle.queryPermission) return false;
+      let perm = await handle.queryPermission({ mode: "readwrite" });
+      if (perm !== "granted") perm = await handle.requestPermission({ mode: "readwrite" });
+      return perm === "granted";
+    }
+
+    async function writeBoundFile(showOk) {
+      if (!fileHandle) return;
+      try {
+        if (!(await ensurePermission(fileHandle))) throw new Error("no permission");
+        const writable = await fileHandle.createWritable();
+        await writable.write(workbookBytes(state.rows));
+        await writable.close();
+        setFileStatus(`已自动保存到 ${fileHandle.name || EXCEL_NAME} · ${state.rows.length} 条`, true);
+        if (showOk) showToast("已写入同目录表格");
+      } catch (err) {
+        console.error(err);
+        fileHandle = null;
+        setFileStatus("表格写入失败。请再点一次「绑定表格」。", false);
+      }
+    }
+
+    async function loadBoundFile() {
+      const file = await fileHandle.getFile();
+      const rows = parseWorkbookBuffer(new Uint8Array(await file.arrayBuffer()));
+      state.rows = rows;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      renderTable();
+      updateStats();
+      setFileStatus(`已绑定 ${fileHandle.name} · ${rows.length} 条。之后保存会自动写回。`, true);
+    }
+
+    async function bindExcel(opts = {}) {
+      if (!window.showSaveFilePicker && !window.showOpenFilePicker) return false;
+      try {
+        let handle = null;
+        if (opts.fromSave && window.showSaveFilePicker) {
+          handle = await window.showSaveFilePicker({
+            suggestedName: EXCEL_NAME,
+            types: [{
+              description: "Excel",
+              accept: { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"] }
+            }]
+          });
+        } else if (window.showOpenFilePicker) {
+          const picked = await window.showOpenFilePicker({
+            types: [{
+              description: "Excel",
+              accept: { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"] }
+            }],
+            excludeAcceptAllOption: false,
+            multiple: false
+          });
+          handle = picked[0];
+        }
+        if (!handle) return false;
+        if (!(await ensurePermission(handle))) return false;
+        fileHandle = handle;
+        await saveHandle(handle);
+        if (!opts.fromSave) {
+          const file = await handle.getFile();
+          const diskRows = parseWorkbookBuffer(new Uint8Array(await file.arrayBuffer()));
+          if (diskRows.length) {
+            state.rows = diskRows;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            renderTable();
+            updateStats();
+          }
+        }
+        setFileStatus(`已记住 ${handle.name}。之后保存会自动写回。`, true);
+        return true;
+      } catch (err) {
+        if (err && err.name === "AbortError") return false;
+        console.error(err);
+        return false;
+      }
+    }
+
+    async function bootBoundFile() {
+      try {
+        const handle = await loadHandle();
+        if (!handle) {
+          setFileStatus("数据先存在浏览器。第一次保存时选中同目录 Excel，之后自动写回。", false);
+          return;
+        }
+        if (!(await ensurePermission(handle))) {
+          setFileStatus("浏览器还记得表格。再保存一次并允许写入，就会继续自动写回。", false);
+          return;
+        }
+        fileHandle = handle;
+        await loadBoundFile();
+      } catch (err) {
+        console.error(err);
+        setFileStatus("数据先存在浏览器。第一次保存时选中同目录 Excel 即可。", false);
+      }
+    }
+
+    function setFileStatus(text, ok) {
+      const el = document.getElementById("fileStatus");
+      if (!el) return;
+      el.textContent = text;
+      el.classList.toggle("ok", !!ok);
+      el.classList.toggle("warn", !ok);
+    }
+
+    function money(n) {
+      const v = Number(n);
+      return Number.isFinite(v) ? Math.round(v * 100) / 100 : 0;
+    }
+
+    function fmtMoney(n) {
+      const v = money(n);
+      return v.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function escapeHtml(str) {
+      return String(str ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    function showToast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.add("show");
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => toastEl.classList.remove("show"), 2400);
+    }
+
+    function emptyRow() {
+      const row = { id: uid() };
+      ALL_FIELDS.forEach((f) => { row[f.key] = ""; });
+      row.status = "洽谈中";
+      return row;
+    }
+
+    function isMeaningful(row) {
+      const skip = access().rowField;
+      return ALL_FIELDS.some((f) => {
+        if (f.key === "status" && (row[f.key] === "洽谈中" || row[f.key] === "")) return false;
+        if (f.computed) return false;
+        if (skip && f.key === skip && bindMatches(row[f.key], currentUser && currentUser.bind)) return false;
+        return String(row[f.key] ?? "").trim() !== "";
+      });
+    }
+
+    function draftKey() {
+      return DRAFT_KEY + ":" + ((currentUser && currentUser.username) || "guest");
+    }
+
+    function loadDraft() {
+      try {
+        const raw = localStorage.getItem(draftKey());
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === "object" ? parsed : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function saveDraft(row) {
+      if (!isMeaningful(row)) {
+        localStorage.removeItem(draftKey());
+        return;
+      }
+      localStorage.setItem(draftKey(), JSON.stringify(row));
+    }
+
+    function clearDraft() {
+      localStorage.removeItem(draftKey());
+      formDirty = false;
+    }
+
+    function persistDraftFromForm() {
+      if (!currentUser) return;
+      if (editingId) return;
+      if (drawer.getAttribute("aria-hidden") === "true") return;
+      const row = readForm();
+      saveDraft(row);
+      formDirty = isMeaningful(row);
+    }
+
+    function fieldEl(name) {
+      return document.getElementById("f_" + name);
+    }
+
+    function getVal(key) {
+      const el = fieldEl(key);
+      return el ? String(el.value ?? "").trim() : "";
+    }
+
+    function setVal(key, value) {
+      const el = fieldEl(key);
+      if (el) el.value = value ?? "";
+    }
+
+    function renderFieldHtml(f) {
+      const writable = canEditField(f.key) && !f.computed;
+      const cls = f.full ? "field full" : "field";
+      const id = "f_" + f.key;
+      if (f.type === "select") {
+        const opts = STATUS_OPTIONS.map((s) => `<option value="${s}">${s}</option>`).join("");
+        const dis = writable ? "" : "disabled";
+        return `<div class="${cls}"><label for="${id}">${escapeHtml(f.label)}</label><select id="${id}" name="${f.key}" ${dis}>${opts}</select></div>`;
+      }
+      const type = f.type === "money" ? "number" : f.type;
+      const extra = f.type === "money" ? 'step="0.01" inputmode="decimal"' : "";
+      const ro = writable ? "" : "readonly";
+      return `<div class="${cls}"><label for="${id}">${escapeHtml(f.label)}</label><input id="${id}" name="${f.key}" type="${type}" ${extra} ${ro} /></div>`;
+    }
+
+    function renderColorGroups() {
+      const mount = document.getElementById("colorFields");
+      mount.innerHTML = COLOR_GROUPS.map((g) => {
+        const fields = g.fields.filter((f) => canSeeField(f.key));
+        if (!fields.length) return "";
+        return `
+        <section class="pane ${g.tone}">
+          <div class="pane-head">
+            <span class="count-pill">${fields.length}</span>
+            <h3>${escapeHtml(g.title)}</h3>
+            <small>${escapeHtml(g.note)}</small>
+          </div>
+          <div class="fields">
+            <div class="grid">${fields.map(renderFieldHtml).join("")}</div>
+          </div>
+        </section>`;
+      }).join("");
+    }
+
+    function recalcPending() {
+      const pairs = [
+        ["execSignAmount", "execReceived", "pendingAmount"],
+        ["execManageFee", "execReceivedManage", "pendingManage"],
+        ["execExecFee", "execReceivedExec", "pendingExec"],
+        ["execCoordFee", "execReceivedCoord", "pendingCoord"],
+        ["execTaxFee", "execReceivedTax", "pendingTax"]
+      ];
+      pairs.forEach(([a, b, out]) => {
+        const av = getVal(a);
+        const bv = getVal(b);
+        if (av === "" && bv === "") setVal(out, "");
+        else setVal(out, (money(av) - money(bv)).toFixed(2));
+      });
+    }
+
+    function bindCalc() {
+      const mount = document.getElementById("colorFields");
+      if (!mount || mount.dataset.bound === "1") return;
+      mount.dataset.bound = "1";
+      mount.addEventListener("input", () => {
+        recalcPending();
+        persistDraftFromForm();
+      });
+      mount.addEventListener("change", () => {
+        recalcPending();
+        persistDraftFromForm();
+      });
+    }
+
+    function readForm() {
+      const base = editingId
+        ? (state.rows.find((r) => r.id === editingId) || emptyRow())
+        : emptyRow();
+      const incoming = { ...base };
+      if (editingId) incoming.id = editingId;
+      ALL_FIELDS.forEach((f) => {
+        if (f.computed) return;
+        if (!canEditField(f.key)) return;
+        let v = getVal(f.key);
+        if (f.type === "money" && v !== "") v = money(v).toFixed(2);
+        incoming[f.key] = v;
+      });
+      const row = mergeWritable(base, incoming);
+      return applyRoleToNewRow(row);
+    }
+
+    function fillForm(row) {
+      ALL_FIELDS.forEach((f) => setVal(f.key, row[f.key] ?? ""));
+      const a = access();
+      if (a.rowField && currentUser && currentUser.bind) {
+        const el = fieldEl(a.rowField);
+        if (el && !String(el.value || "").trim()) el.value = currentUser.bind;
+        if (el && roleOf(currentUser) !== "admin") el.readOnly = true;
+      }
+      recalcPending();
+    }
+
+    function showDrawer() {
+      drawerMask.classList.add("show");
+      drawer.setAttribute("aria-hidden", "false");
+    }
+
+    function hideDrawer() {
+      drawerMask.classList.remove("show");
+      drawer.setAttribute("aria-hidden", "true");
+    }
+
+    function openDrawer(mode, row) {
+      const draftBar = document.getElementById("draftBar");
+      draftBar.classList.remove("show");
+      renderColorGroups();
+      bindCalc();
+
+      if (mode === "edit") {
+        persistDraftFromForm();
+        editingId = row.id;
+        document.getElementById("drawerTitle").textContent = "编辑项目";
+        document.getElementById("drawerSub").textContent = "只保存你有权限的字段，其他人填写的内容不会被覆盖。";
+        document.getElementById("saveBtn").textContent = "保存修改";
+        document.getElementById("deleteCurrentBtn").hidden = !access().canDelete;
+        fillForm(row);
+      } else {
+        if (!access().canCreate) return showToast("当前账号不能新建项目");
+        editingId = null;
+        document.getElementById("drawerTitle").textContent = "新建项目";
+        document.getElementById("drawerSub").textContent = "保存后追加到总表末尾。会自动带上你的绑定名称。";
+        document.getElementById("saveBtn").textContent = "保存并追加";
+        document.getElementById("deleteCurrentBtn").hidden = true;
+        const draft = loadDraft();
+        if (draft && isMeaningful(draft)) {
+          fillForm(applyRoleToNewRow({ ...emptyRow(), ...draft, id: draft.id || uid() }));
+          draftBar.classList.add("show");
+        } else {
+          fillForm(applyRoleToNewRow(row || emptyRow()));
+        }
+      }
+      showDrawer();
+      const first = fieldEl("projectName");
+      if (first && !first.readOnly) setTimeout(() => first.focus(), 50);
+      renderTable();
+    }
+
+    function requestCloseDrawer(opts = {}) {
+      if (opts.persistDraft !== false) persistDraftFromForm();
+      editingId = null;
+      hideDrawer();
+      renderTable();
+    }
+
+    function closeDrawer() {
+      requestCloseDrawer();
+    }
+
+    function filteredRows() {
+      const rows = visibleRows();
+      const q = query.trim().toLowerCase();
+      if (!q) return rows;
+      const keys = ["projectName", "supportCompany", "execParty", "signOwner", "execOwner", "hcoName", "presenter", "diseaseArea", "projectType", "status"];
+      return rows.filter((r) => keys.some((k) => String(r[k] || "").toLowerCase().includes(q)));
+    }
+
+    function cellHtml(row, key) {
+      const meta = TABLE_COL_META[key] || { label: key };
+      const v = row[key];
+      if (meta.badge) return `<span class="badge st-${escapeHtml(v || "")}">${escapeHtml(v || "—")}</span>`;
+      if (meta.money) return `<span class="money">${v === "" || v == null ? "—" : fmtMoney(v)}</span>`;
+      if (meta.name) return `<span class="name" title="${escapeHtml(row.projectName || "")}">${escapeHtml(row.projectName || "未命名项目")}</span>`;
+      return escapeHtml(v || "—");
+    }
+
+    function updateStats() {
+      const rows = visibleRows();
+      const role = roleOf(currentUser);
+      document.getElementById("statCount").textContent = String(rows.length);
+      document.getElementById("statCountLabel").textContent = role === "admin" ? "全部项目" : "可见项目";
+      if (role === "executor") {
+        document.getElementById("statSignLabel").textContent = "执行签约合计";
+        document.getElementById("statReceivedLabel").textContent = "执行已回款";
+        document.getElementById("statPendingLabel").textContent = "执行方待回款";
+        document.getElementById("statSign").textContent = fmtMoney(rows.reduce((s, r) => s + money(r.execSignAmount), 0));
+        document.getElementById("statReceived").textContent = fmtMoney(rows.reduce((s, r) => s + money(r.execReceived), 0));
+        document.getElementById("statPending").textContent = fmtMoney(rows.reduce((s, r) => s + money(r.pendingAmount), 0));
+      } else if (role === "signOwner") {
+        document.getElementById("statSignLabel").textContent = "已签约";
+        document.getElementById("statReceivedLabel").textContent = "执行中";
+        document.getElementById("statPendingLabel").textContent = "已完成";
+        document.getElementById("statSign").textContent = String(rows.filter((r) => r.status === "已签约").length);
+        document.getElementById("statReceived").textContent = String(rows.filter((r) => r.status === "执行中").length);
+        document.getElementById("statPending").textContent = String(rows.filter((r) => r.status === "已完成").length);
+      } else if (role === "company") {
+        document.getElementById("statSignLabel").textContent = "企业签约合计";
+        document.getElementById("statReceivedLabel").textContent = "企业已回款";
+        document.getElementById("statPendingLabel").textContent = "回款中";
+        document.getElementById("statSign").textContent = fmtMoney(rows.reduce((s, r) => s + money(r.signAmount), 0));
+        document.getElementById("statReceived").textContent = fmtMoney(rows.reduce((s, r) => s + money(r.received), 0));
+        document.getElementById("statPending").textContent = String(rows.filter((r) => r.status === "回款中").length);
+      } else {
+        document.getElementById("statSignLabel").textContent = "企业签约合计";
+        document.getElementById("statReceivedLabel").textContent = "企业已回款";
+        document.getElementById("statPendingLabel").textContent = "执行方待回款";
+        document.getElementById("statSign").textContent = fmtMoney(rows.reduce((s, r) => s + money(r.signAmount), 0));
+        document.getElementById("statReceived").textContent = fmtMoney(rows.reduce((s, r) => s + money(r.received), 0));
+        document.getElementById("statPending").textContent = fmtMoney(rows.reduce((s, r) => s + money(r.pendingAmount), 0));
+      }
+    }
+
+    function renderTable() {
+      const wrap = document.getElementById("tableWrap");
+      const rows = filteredRows();
+      const cols = access().tableCols || [];
+      const scoped = visibleRows();
+      if (!state.rows.length) {
+        wrap.innerHTML = `
+          <div class="empty">
+            <h3>还没有项目</h3>
+            <p>${access().canCreate ? "点击「新建项目」录入第一条，或导入已有 Excel。" : "总表还是空的，请让管理员先录入。"}</p>
+          </div>`;
+        return;
+      }
+      if (!scoped.length) {
+        wrap.innerHTML = `
+          <div class="empty">
+            <h3>没有属于你的项目</h3>
+            <p>当前账号绑定的是「${escapeHtml(currentUser.bind || "未填写")}」，请让管理员确认表格里的名称是否完全一致。</p>
+          </div>`;
+        return;
+      }
+      if (!rows.length) {
+        wrap.innerHTML = `<div class="empty"><h3>没有匹配结果</h3><p>换个关键词试试。</p></div>`;
+        return;
+      }
+      wrap.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              ${cols.map((k) => `<th>${escapeHtml((TABLE_COL_META[k] || {}).label || k)}</th>`).join("")}
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((r) => `
+              <tr data-id="${escapeHtml(r.id)}" class="${r.id === editingId ? "active" : ""}">
+                ${cols.map((k) => `<td${TABLE_COL_META[k] && TABLE_COL_META[k].money ? ' class="money"' : ""}>${cellHtml(r, k)}</td>`).join("")}
+                <td>
+                  <div class="ops">
+                    <button type="button" class="btn-copy btn-tiny" data-act="copy-full">整条拷贝</button>
+                    <button type="button" class="btn-copy btn-tiny" data-act="copy-line">单行拷贝</button>
+                    <button type="button" class="btn-secondary btn-tiny" data-act="edit">编辑</button>
+                    ${access().canDelete ? `<button type="button" class="btn-danger btn-tiny" data-act="del">删除</button>` : ""}
+                  </div>
+                </td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function visibleFields() {
+      return ALL_FIELDS.filter((f) => canSeeField(f.key));
+    }
+
+    function rowLineText(row) {
+      return visibleFields().map((f) => String(row[f.key] ?? "")).join("\t");
+    }
+
+    function rowFullText(row) {
+      const blocks = COLOR_GROUPS.filter((g) => canSeeGroup(g.id)).map((g) => {
+        const lines = g.fields.map((f) => {
+          const v = row[f.key];
+          return `${f.label}：${v == null || v === "" ? "" : v}`;
+        });
+        return `【${g.title}】\n${lines.join("\n")}`;
+      });
+      const name = row.projectName || "未命名项目";
+      return `${name}\n${blocks.join("\n\n")}`;
+    }
+
+    async function copyText(text, okMsg) {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.setAttribute("readonly", "");
+          ta.style.position = "fixed";
+          ta.style.left = "-9999px";
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          ta.remove();
+        }
+        showToast(okMsg);
+      } catch (err) {
+        console.error(err);
+        showToast("复制失败，请检查浏览器权限");
+      }
+    }
+
+    function copyRow(row, mode) {
+      if (!row) return showToast("没有可复制的记录");
+      if (mode === "full") copyText(rowFullText(row), "已拷贝整条到剪贴板");
+      else copyText(rowLineText(row), "已拷贝单行到剪贴板，可直接贴进 Excel");
+    }
+
+    function deleteRow(id) {
+      if (!access().canDelete) return showToast("当前账号不能删除");
+      const row = state.rows.find((r) => r.id === id);
+      if (!row || !visibleRows().some((r) => r.id === id)) return showToast("没有这条记录的权限");
+      const name = row.projectName ? `「${row.projectName}」` : "这条记录";
+      if (!confirm(`确定删除${name}？此操作不可撤销。`)) return;
+      state.rows = state.rows.filter((r) => r.id !== id);
+      persist();
+      if (editingId === id) closeDrawer();
+      showToast("已删除");
+    }
+
+    function workbookBytes(rows, fields) {
+      const cols = fields && fields.length ? fields : ALL_FIELDS;
+      const full = cols === ALL_FIELDS || cols.length === ALL_FIELDS.length;
+      const note = Array(cols.length).fill("");
+      note[0] = "说明";
+      if (full) {
+        note[11] = EXPORT_TOP[0];
+        note[23] = EXPORT_TOP[1];
+        note[37] = "（供应商执行费+劳务费）";
+        note[38] = "（管理费的税费）";
+      }
+      const headers = cols.map((f) => f.label);
+      const body = (rows || []).map((r) => cols.map((f) => r[f.key] ?? ""));
+      const aoa = [note, headers, ...body];
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      if (full) {
+        ws["!merges"] = [
+          { s: { r: 0, c: 11 }, e: { r: 0, c: 22 } },
+          { s: { r: 0, c: 23 }, e: { r: 0, c: 36 } }
+        ];
+      }
+      ws["!cols"] = cols.map((f) => ({
+        wch: Math.min(24, Math.max(10, String(f.label).length * 1.7 + 2))
+      }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "项目管理表格-全员");
+      return XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    }
+
+    function downloadNamed(filename, rows, fields) {
+      XLSX.writeFile(XLSX.read(workbookBytes(rows || state.rows, fields), { type: "array" }), filename);
+    }
+
+    function parseWorkbookBuffer(buf) {
+      const wb = XLSX.read(buf, { type: "array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false });
+      if (!aoa.length) return [];
+      const headerIdx = findHeaderRow(aoa);
+      const start = headerIdx >= 0 ? headerIdx + 1 : 0;
+      return aoa.slice(start)
+        .filter((r) => (r || []).some((c) => String(c ?? "").trim() !== ""))
+        .map(rowFromCells);
+    }
+
+    function importWorkbook(file) {
+      if (!access().canImport) return showToast("当前账号不能导入");
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const rows = parseWorkbookBuffer(new Uint8Array(e.target.result));
+          if (state.rows.length && !confirm(`导入将替换当前 ${state.rows.length} 条，继续？`)) return;
+          state.rows = rows;
+          persist();
+          showToast(`已导入 ${rows.length} 条`);
+        } catch (err) {
+          console.error(err);
+          showToast("导入失败，请确认是 Excel / CSV");
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function saveClearBackup() {
+      const stamp = stampNow();
+      const snapshot = JSON.parse(JSON.stringify(state.rows));
+      const backups = loadBackups();
+      backups.unshift({
+        stamp,
+        savedAt: Date.now(),
+        count: snapshot.length,
+        rows: snapshot
+      });
+      persistBackups(backups);
+      downloadNamed(`项目管理表格-全员_清空备份_${stamp}.xlsx`, snapshot);
+      return stamp;
+    }
+
+    function renderBackupList() {
+      const list = loadBackups();
+      const mount = document.getElementById("backupList");
+      if (!list.length) {
+        mount.innerHTML = `<div class="backup-empty">还没有清空备份</div>`;
+        return;
+      }
+      mount.innerHTML = list.map((b) => `
+        <div class="backup-item" data-stamp="${escapeHtml(b.stamp)}">
+          <div class="meta">
+            <b>${escapeHtml(b.stamp)}</b>
+            <span>${b.count} 条 · ${new Date(b.savedAt).toLocaleString("zh-CN")}</span>
+          </div>
+          <button type="button" class="btn-secondary btn-tiny" data-backup="download">下载</button>
+          <button type="button" class="btn-primary btn-tiny" data-backup="restore">恢复</button>
+        </div>
+      `).join("");
+    }
+
+    function openBackupPanel() {
+      renderBackupList();
+      document.getElementById("backupMask").classList.add("show");
+    }
+
+    function closeBackupPanel() {
+      document.getElementById("backupMask").classList.remove("show");
+    }
+
+    function restoreBackup(stamp) {
+      if (!access().canClear) return showToast("当前账号不能恢复清空备份");
+      const item = loadBackups().find((b) => b.stamp === stamp);
+      if (!item) return showToast("找不到这份备份");
+      const n = (item.rows || []).length;
+      if (!confirm(`用备份 ${stamp} 覆盖当前数据？将恢复 ${n} 条。`)) return;
+      state.rows = JSON.parse(JSON.stringify(item.rows || []));
+      persist();
+      closeBackupPanel();
+      closeDrawer();
+      showToast(`已从备份 ${stamp} 恢复 ${n} 条`);
+    }
+
+    function downloadBackupFile(stamp) {
+      const item = loadBackups().find((b) => b.stamp === stamp);
+      if (!item) return showToast("找不到这份备份");
+      downloadNamed(`项目管理表格-全员_清空备份_${stamp}.xlsx`, item.rows || []);
+      showToast("备份 Excel 已下载");
+    }
+
+    function clearAllProjects() {
+      if (!access().canClear) return showToast("当前账号不能清空总表");
+      if (!state.rows.length) return showToast("已经是空的");
+      const n = state.rows.length;
+      const ok = confirm(`确定全部清空 ${n} 条记录？\n清空前会先下载一份带时间戳的备份。`);
+      if (!ok) return;
+      const stamp = saveClearBackup();
+      state.rows = [];
+      persist();
+      closeDrawer();
+      showToast(`已清空。备份 ${stamp} 已下载`);
+    }
+
+    function roleLabel(role) {
+      return (ROLE_META[role] || ROLE_META.admin).label;
+    }
+
+    function applyShell() {
+      const a = access();
+      const meta = ROLE_META[roleOf(currentUser)] || ROLE_META.admin;
+      const pill = document.getElementById("rolePill");
+      pill.textContent = meta.label;
+      pill.className = `role-pill ${meta.pill}`;
+      document.getElementById("userNameLabel").textContent = currentUser.username;
+      const bindText = a.rowField
+        ? `绑定：${currentUser.bind || "未填写"} · ${meta.desc}`
+        : meta.desc;
+      document.getElementById("userBindLabel").textContent = bindText;
+      document.getElementById("pageSubtitle").textContent = a.rowField
+        ? `同一张总表。你只能看到「${roleLabel(currentUser.role)}」匹配「${currentUser.bind || "未填写"}」的项目。`
+        : "同一张总表。管理员可查看和修改全部项目。";
+      document.getElementById("newBtn").hidden = !a.canCreate;
+      document.getElementById("importBtn").hidden = !a.canImport;
+      document.getElementById("exportBtn").hidden = !a.canExport;
+      document.getElementById("clearAllBtn").hidden = !a.canClear;
+      document.getElementById("usersBtn").hidden = !a.canManageUsers;
+      document.getElementById("fileStatus").hidden = roleOf(currentUser) !== "admin";
+      renderColorGroups();
+      bindCalc();
+      renderTable();
+      updateStats();
+    }
+
+    function enterApp(user) {
+      currentUser = user;
+      saveSession(user);
+      document.getElementById("loginGate").hidden = true;
+      document.getElementById("appRoot").hidden = false;
+      applyShell();
+      if (roleOf(user) === "admin") bootBoundFile();
+    }
+
+    function showLogin(msg) {
+      currentUser = null;
+      clearSession();
+      hideDrawer();
+      document.getElementById("accountMask").classList.remove("show");
+      document.getElementById("backupMask").classList.remove("show");
+      document.getElementById("appRoot").hidden = true;
+      document.getElementById("loginGate").hidden = false;
+      const err = document.getElementById("loginError");
+      if (msg) {
+        err.textContent = msg;
+        err.classList.add("show");
+      } else {
+        err.classList.remove("show");
+      }
+      const pass = document.getElementById("loginPass");
+      if (pass) pass.value = "";
+    }
+
+    function tryLogin(username, password) {
+      const users = loadUsers();
+      const user = users.find((u) => u.username === String(username || "").trim() && u.password === String(password || ""));
+      if (!user) return false;
+      enterApp(user);
+      showToast(`已进入 · ${roleLabel(user.role)}`);
+      return true;
+    }
+
+    function renderAccountList() {
+      const users = loadUsers();
+      const mount = document.getElementById("accountList");
+      mount.innerHTML = users.map((u) => `
+        <div class="account-item" data-user="${escapeHtml(u.username)}">
+          <div class="meta">
+            <b>${escapeHtml(u.username)} · ${escapeHtml(roleLabel(u.role))}</b>
+            <span>${u.role === "admin" ? "可看全部项目" : `绑定「${escapeHtml(u.bind || "未填写")}」`} · 密码 ${escapeHtml(u.password)}</span>
+          </div>
+          <div class="ops">
+            <button type="button" class="btn-secondary btn-tiny" data-acc="edit">编辑</button>
+            ${u.username === "admin" || isBuiltinUser(u.username) ? "" : `<button type="button" class="btn-danger btn-tiny" data-acc="del">删除</button>`}
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function resetAccountForm() {
+      editingAccount = null;
+      document.getElementById("accountForm").reset();
+      document.getElementById("accUser").readOnly = false;
+      document.getElementById("accSaveBtn").textContent = "添加账号";
+      toggleBindHint();
+    }
+
+    function toggleBindHint() {
+      const role = document.getElementById("accRole").value;
+      const bind = document.getElementById("accBind");
+      bind.required = role !== "admin";
+      bind.placeholder = role === "company"
+        ? "必须和表格「支持企业」完全一致"
+        : role === "executor"
+          ? "必须和表格「项目执行方」完全一致"
+          : role === "signOwner"
+            ? "必须和表格「签约负责人」完全一致"
+            : "管理员可空";
+    }
+
+    function openAccountPanel() {
+      if (!access().canManageUsers) return;
+      resetAccountForm();
+      renderAccountList();
+      document.getElementById("accountMask").classList.add("show");
+    }
+
+    function closeAccountPanel() {
+      document.getElementById("accountMask").classList.remove("show");
+      resetAccountForm();
+    }
+
+    function findHeaderRow(aoa) {
+      for (let i = 0; i < Math.min(aoa.length, 8); i++) {
+        const row = (aoa[i] || []).map((c) => String(c ?? "").trim());
+        if (HEADER_MARKERS.every((m) => row.includes(m))) return i;
+      }
+      return -1;
+    }
+
+    function rowFromCells(cells) {
+      const row = emptyRow();
+      ALL_FIELDS.forEach((f, i) => {
+        row[f.key] = String(cells[i] ?? "").trim();
+      });
+      return row;
+    }
+
+    document.getElementById("loginForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const username = document.getElementById("loginUser").value;
+      const password = document.getElementById("loginPass").value;
+      if (!tryLogin(username, password)) {
+        const err = document.getElementById("loginError");
+        err.textContent = "账号或密码不对";
+        err.classList.add("show");
+      }
+    });
+    document.getElementById("logoutBtn").addEventListener("click", () => {
+      persistDraftFromForm();
+      showLogin();
+      showToast("已退出");
+    });
+    document.getElementById("usersBtn").addEventListener("click", openAccountPanel);
+    document.getElementById("closeAccountBtn").addEventListener("click", closeAccountPanel);
+    document.getElementById("accountMask").addEventListener("click", (e) => {
+      if (e.target === document.getElementById("accountMask")) closeAccountPanel();
+    });
+    document.getElementById("accRole").addEventListener("change", toggleBindHint);
+    document.getElementById("accResetBtn").addEventListener("click", resetAccountForm);
+    document.getElementById("accountForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const username = document.getElementById("accUser").value.trim();
+      const password = document.getElementById("accPass").value.trim();
+      const role = document.getElementById("accRole").value;
+      const bind = document.getElementById("accBind").value.trim();
+      if (!username || !password) return showToast("账号和密码都要填");
+      if (role !== "admin" && !bind) return showToast("这个角色必须填写绑定名称");
+      const users = loadUsers();
+      const exists = users.find((u) => u.username === username);
+      if (editingAccount) {
+        const idx = users.findIndex((u) => u.username === editingAccount);
+        if (idx < 0) return showToast("找不到这个账号");
+        if (username !== editingAccount && exists) return showToast("账号已存在");
+        if (editingAccount === "admin" && role !== "admin") return showToast("默认管理员不能改角色");
+        users[idx] = { username, password, role, bind: role === "admin" ? "" : bind };
+      } else {
+        if (exists) return showToast("账号已存在");
+        users.push({ username, password, role, bind: role === "admin" ? "" : bind });
+      }
+      persistUsers(users);
+      if (currentUser && currentUser.username === (editingAccount || username)) {
+        currentUser = users.find((u) => u.username === username);
+        saveSession(currentUser);
+        applyShell();
+      }
+      renderAccountList();
+      resetAccountForm();
+      showToast(editingAccount ? "账号已更新" : "账号已添加");
+    });
+    document.getElementById("accountList").addEventListener("click", (e) => {
+      const item = e.target.closest(".account-item");
+      if (!item) return;
+      const username = item.getAttribute("data-user");
+      const act = e.target.closest("[data-acc]");
+      if (!act) return;
+      const users = loadUsers();
+      const user = users.find((u) => u.username === username);
+      if (!user) return;
+      if (act.getAttribute("data-acc") === "edit") {
+        editingAccount = username;
+        document.getElementById("accUser").value = user.username;
+        document.getElementById("accUser").readOnly = username === "admin";
+        document.getElementById("accPass").value = user.password;
+        document.getElementById("accRole").value = user.role;
+        document.getElementById("accBind").value = user.bind || "";
+        document.getElementById("accSaveBtn").textContent = "保存账号";
+        toggleBindHint();
+        return;
+      }
+      if (act.getAttribute("data-acc") === "del") {
+        if (username === "admin" || isBuiltinUser(username)) return showToast("页面里写死的账号请改 BUILTIN_USERS");
+        if (!confirm(`删除账号「${username}」？`)) return;
+        persistUsers(users.filter((u) => u.username !== username));
+        renderAccountList();
+        showToast("账号已删除");
+      }
+    });
+
+    document.getElementById("newBtn").addEventListener("click", () => {
+      if (!access().canCreate) return showToast("当前账号不能新建项目");
+      if (drawer.getAttribute("aria-hidden") !== "true") persistDraftFromForm();
+      openDrawer("new");
+    });
+    document.getElementById("closeDrawerBtn").addEventListener("click", () => {
+      const wasEdit = !!editingId;
+      persistDraftFromForm();
+      const kept = !wasEdit && !!loadDraft();
+      requestCloseDrawer({ persistDraft: false });
+      showToast(wasEdit ? "已收起，修改未保存" : (kept ? "已收起，未保存内容已暂存" : "已收起"));
+    });
+    drawerMask.addEventListener("click", () => {
+      persistDraftFromForm();
+      showToast("点空白处不会关闭，请点「关闭」或「保存并追加」");
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      if (drawer.getAttribute("aria-hidden") === "true") return;
+      persistDraftFromForm();
+      requestCloseDrawer();
+      showToast("已收起，未保存内容已暂存");
+    });
+
+    document.getElementById("searchInput").addEventListener("input", (e) => {
+      query = e.target.value;
+      renderTable();
+    });
+
+    document.getElementById("importFile").addEventListener("change", (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) importWorkbook(file);
+      e.target.value = "";
+    });
+    document.getElementById("exportBtn").addEventListener("click", () => {
+      if (!access().canExport) return showToast("当前账号不能导出");
+      const rows = exportableRows();
+      const name = roleOf(currentUser) === "admin"
+        ? "项目管理表格-全员.xlsx"
+        : `项目管理表格-${currentUser.username}.xlsx`;
+      downloadNamed(name, rows, roleOf(currentUser) === "admin" ? ALL_FIELDS : visibleFields());
+      showToast(roleOf(currentUser) === "admin" ? "已导出完整总表" : `已导出你可见的 ${rows.length} 条`);
+    });
+
+    document.getElementById("clearAllBtn").addEventListener("click", clearAllProjects);
+    document.getElementById("closeBackupBtn").addEventListener("click", closeBackupPanel);
+    document.getElementById("backupMask").addEventListener("click", (e) => {
+      if (e.target === document.getElementById("backupMask")) closeBackupPanel();
+    });
+    document.getElementById("backupList").addEventListener("click", (e) => {
+      const item = e.target.closest(".backup-item");
+      if (!item) return;
+      const stamp = item.getAttribute("data-stamp");
+      const act = e.target.closest("[data-backup]");
+      if (!act) return;
+      if (act.getAttribute("data-backup") === "restore") restoreBackup(stamp);
+      if (act.getAttribute("data-backup") === "download") downloadBackupFile(stamp);
+    });
+
+    document.getElementById("resetFormBtn").addEventListener("click", () => {
+      if (editingId) {
+        fillForm(state.rows.find((r) => r.id === editingId) || emptyRow());
+        return;
+      }
+      if (isMeaningful(readForm()) && !confirm("确定清空当前未保存的填写？")) return;
+      clearDraft();
+      document.getElementById("draftBar").classList.remove("show");
+      fillForm(applyRoleToNewRow(emptyRow()));
+    });
+
+    document.getElementById("deleteCurrentBtn").addEventListener("click", () => {
+      if (editingId) deleteRow(editingId);
+    });
+
+    document.getElementById("entryForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const row = readForm();
+      const filled = ALL_FIELDS.some((f) => String(row[f.key] || "") !== "");
+      if (!filled) return showToast("请至少填写一项");
+      if (canEditField("projectName") && !row.projectName) return showToast("请填写项目名称");
+
+      if (editingId) {
+        const idx = state.rows.findIndex((r) => r.id === editingId);
+        if (idx < 0) return showToast("找不到这条记录");
+        if (!visibleRows().some((r) => r.id === editingId)) return showToast("没有这条记录的权限");
+        state.rows[idx] = mergeWritable(state.rows[idx], row);
+        persist();
+        showToast("已保存你有权限的字段");
+      } else {
+        if (!access().canCreate) return showToast("当前账号不能新建项目");
+        state.rows.push(applyRoleToNewRow(row));
+        persist();
+        showToast("已追加到总表末尾");
+      }
+      clearDraft();
+      document.getElementById("draftBar").classList.remove("show");
+      fillForm(applyRoleToNewRow(emptyRow()));
+      requestCloseDrawer({ persistDraft: false });
+    });
+
+    document.getElementById("tableWrap").addEventListener("click", (e) => {
+      const tr = e.target.closest("tr[data-id]");
+      if (!tr) return;
+      const id = tr.getAttribute("data-id");
+      const act = e.target.closest("[data-act]");
+      const kind = act && act.getAttribute("data-act");
+      if (kind === "del") {
+        e.stopPropagation();
+        deleteRow(id);
+        return;
+      }
+      if (kind === "copy-full" || kind === "copy-line") {
+        e.stopPropagation();
+        copyRow(visibleRows().find((r) => r.id === id), kind === "copy-full" ? "full" : "line");
+        return;
+      }
+      const row = visibleRows().find((r) => r.id === id);
+      if (row) openDrawer("edit", row);
+    });
+
+    document.getElementById("copyFullBtn").addEventListener("click", () => {
+      copyRow(readForm(), "full");
+    });
+    document.getElementById("copyLineBtn").addEventListener("click", () => {
+      copyRow(readForm(), "line");
+    });
+
+    window.addEventListener("beforeunload", persistDraftFromForm);
+
+    (function boot() {
+      loadUsers();
+      const sessionUser = loadSession();
+      if (sessionUser) enterApp(sessionUser);
+      else showLogin();
+    })();
+  </script>
+</body>
+</html>
