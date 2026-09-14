@@ -781,7 +781,7 @@
         <div class="eyebrow">PROJECT LEDGER</div>
         <h1>项目台账</h1>
         <p class="subtitle" id="pageSubtitle">登录后按权限查看同一张总表。</p>
-        <p class="file-status" id="fileStatus">保存会记在这个浏览器里，不会改仓库或磁盘上的 Excel。</p>
+        <p class="file-status" id="fileStatus">登录后从仓库读取同一份总表，保存会写回 GitHub。</p>
       </div>
       <div class="stats">
         <div class="stat"><b id="statCount">0</b><span id="statCountLabel">项目条数</span></div>
@@ -897,6 +897,7 @@
   <div class="toast" id="toast"></div>
 
   <script>
+    const API_BASE = "https://excel-tree-save.cedar1012.workers.dev";
     const STORAGE_KEY = "excel_tree_project_ledger_v2";
     const DRAFT_KEY = "excel_tree_project_ledger_draft_v3";
     const BACKUP_KEY = "excel_tree_project_ledger_backups_v2";
@@ -1102,6 +1103,8 @@
     let formDirty = false;
     let fileHandle = null;
     let persistTimer = 0;
+    let saving = false;
+    let pendingDeletedIds = [];
     const HANDLE_DB = "excel_tree_fs";
     const HANDLE_STORE = "handles";
     const EXCEL_NAME = "项目管理表格-全员.xlsx";
@@ -1269,15 +1272,20 @@
         const raw = sessionStorage.getItem(SESSION_KEY);
         if (!raw) return null;
         const parsed = JSON.parse(raw);
-        const users = loadUsers();
-        return users.find((u) => u.username === parsed.username) || null;
+        if (!parsed || !parsed.username || !parsed.password) return null;
+        return parsed;
       } catch {
         return null;
       }
     }
 
     function saveSession(user) {
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify({ username: user.username }));
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+        username: user.username,
+        password: user.password || "",
+        role: user.role,
+        bind: user.bind || ""
+      }));
     }
 
     function clearSession() {
@@ -1299,13 +1307,80 @@
       return row;
     }
 
-    function persist() {
+    function persist(opts = {}) {
       state.rows.forEach(computePending);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       renderTable();
       updateStats();
-      writeBoundFile(false);
-      setFileStatus(`已保存到此浏览器 · ${state.rows.length} 条。需要文件时请点「导出 Excel」。`, true);
+      return saveRemote(opts);
+    }
+
+    async function api(path, opts = {}) {
+      const headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
+      const res = await fetch(API_BASE + path, Object.assign({}, opts, { headers }));
+      let data = null;
+      try { data = await res.json(); } catch { data = null; }
+      if (!res.ok || (data && data.ok === false)) {
+        throw new Error((data && data.error) || ("请求失败 " + res.status));
+      }
+      return data || {};
+    }
+
+    async function loadRemoteData() {
+      if (!currentUser) return;
+      setFileStatus("正在从仓库读取总表…", false);
+      const data = await api("/data", {
+        method: "GET",
+        headers: {
+          "x-user": currentUser.username,
+          "x-pass": currentUser.password || ""
+        }
+      });
+      state.rows = Array.isArray(data.rows) ? data.rows : [];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      pendingDeletedIds = [];
+      renderTable();
+      updateStats();
+      setFileStatus(`已从仓库读取 ${state.rows.length} 条。保存会写回 GitHub。`, true);
+    }
+
+    async function saveRemote(opts = {}) {
+      if (!currentUser) return false;
+      if (saving) return false;
+      saving = true;
+      setFileStatus("正在保存到仓库…", false);
+      try {
+        const data = await api("/save", {
+          method: "POST",
+          body: JSON.stringify({
+            username: currentUser.username,
+            password: currentUser.password || "",
+            rows: state.rows,
+            deletedIds: pendingDeletedIds,
+            replaceAll: roleOf(currentUser) === "admin" && opts.replaceAll === true,
+            message: opts.message || `${currentUser.username} 保存台账`
+          })
+        });
+        if (Array.isArray(data.rows) && roleOf(currentUser) !== "admin") {
+          const others = state.rows.filter((r) => !visibleRows().some((v) => v.id === r.id));
+          state.rows = others.concat(data.rows);
+        } else if (Array.isArray(data.rows)) {
+          state.rows = data.rows;
+        }
+        pendingDeletedIds = [];
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        renderTable();
+        updateStats();
+        setFileStatus(`已保存到仓库 · ${visibleRows().length} 条可见。`, true);
+        return true;
+      } catch (err) {
+        console.error(err);
+        setFileStatus("保存到仓库失败：" + ((err && err.message) || "请稍后重试"), false);
+        showToast("保存失败：" + ((err && err.message) || "请稍后重试"));
+        return false;
+      } finally {
+        saving = false;
+      }
     }
 
     function idbReq(mode, fn) {
@@ -1811,16 +1886,17 @@
       else copyText(rowLineText(row), "已拷贝单行到剪贴板，可直接贴进 Excel");
     }
 
-    function deleteRow(id) {
+    async function deleteRow(id) {
       if (!access().canDelete) return showToast("当前账号不能删除");
       const row = state.rows.find((r) => r.id === id);
       if (!row || !visibleRows().some((r) => r.id === id)) return showToast("没有这条记录的权限");
       const name = row.projectName ? `「${row.projectName}」` : "这条记录";
       if (!confirm(`确定删除${name}？此操作不可撤销。`)) return;
+      pendingDeletedIds.push(id);
       state.rows = state.rows.filter((r) => r.id !== id);
-      persist();
+      const ok = await persist({ message: `${currentUser.username} 删除项目` });
       if (editingId === id) closeDrawer();
-      showToast("已删除");
+      showToast(ok ? "已删除并写回仓库" : "已从当前列表移除，但仓库保存失败");
     }
 
     function workbookBytes(rows, fields) {
@@ -1871,13 +1947,14 @@
     function importWorkbook(file) {
       if (!access().canImport) return showToast("当前账号不能导入");
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         try {
           const rows = parseWorkbookBuffer(new Uint8Array(e.target.result));
           if (state.rows.length && !confirm(`导入将替换当前 ${state.rows.length} 条，继续？`)) return;
+          pendingDeletedIds = [];
           state.rows = rows;
-          persist();
-          showToast(`已导入 ${rows.length} 条`);
+          const ok = await persist({ replaceAll: true, message: `${currentUser.username} 导入 Excel` });
+          showToast(ok ? `已导入 ${rows.length} 条并写回仓库` : `已导入 ${rows.length} 条，但仓库保存失败`);
         } catch (err) {
           console.error(err);
           showToast("导入失败，请确认是 Excel / CSV");
@@ -1929,17 +2006,18 @@
       document.getElementById("backupMask").classList.remove("show");
     }
 
-    function restoreBackup(stamp) {
+    async function restoreBackup(stamp) {
       if (!access().canClear) return showToast("当前账号不能恢复清空备份");
       const item = loadBackups().find((b) => b.stamp === stamp);
       if (!item) return showToast("找不到这份备份");
       const n = (item.rows || []).length;
       if (!confirm(`用备份 ${stamp} 覆盖当前数据？将恢复 ${n} 条。`)) return;
       state.rows = JSON.parse(JSON.stringify(item.rows || []));
-      persist();
+      pendingDeletedIds = [];
+      const ok = await persist({ replaceAll: true, message: `${currentUser.username} 从备份恢复` });
       closeBackupPanel();
       closeDrawer();
-      showToast(`已从备份 ${stamp} 恢复 ${n} 条`);
+      showToast(ok ? `已从备份 ${stamp} 恢复 ${n} 条并写回仓库` : "本机已恢复，但仓库保存失败");
     }
 
     function downloadBackupFile(stamp) {
@@ -1949,17 +2027,18 @@
       showToast("备份 Excel 已下载");
     }
 
-    function clearAllProjects() {
+    async function clearAllProjects() {
       if (!access().canClear) return showToast("当前账号不能清空总表");
       if (!state.rows.length) return showToast("已经是空的");
       const n = state.rows.length;
       const ok = confirm(`确定全部清空 ${n} 条记录？\n清空前会先下载一份带时间戳的备份。`);
       if (!ok) return;
       const stamp = saveClearBackup();
+      pendingDeletedIds = state.rows.map((r) => r.id);
       state.rows = [];
-      persist();
+      const saved = await persist({ replaceAll: true, message: `${currentUser.username} 清空总表` });
       closeDrawer();
-      showToast(`已清空。备份 ${stamp} 已下载`);
+      showToast(saved ? `已清空并写回仓库。备份 ${stamp} 已下载` : `本机已清空，仓库保存失败。备份 ${stamp} 已下载`);
     }
 
     function roleLabel(role) {
@@ -1984,20 +2063,26 @@
       document.getElementById("importBtn").hidden = !a.canImport;
       document.getElementById("exportBtn").hidden = !a.canExport;
       document.getElementById("clearAllBtn").hidden = !a.canClear;
-      document.getElementById("usersBtn").hidden = !a.canManageUsers;
+      document.getElementById("usersBtn").hidden = true;
       renderColorGroups();
       bindCalc();
       renderTable();
       updateStats();
     }
 
-    function enterApp(user) {
+    async function enterApp(user) {
       currentUser = user;
       saveSession(user);
       document.getElementById("loginGate").hidden = true;
       document.getElementById("appRoot").hidden = false;
       applyShell();
-      bootBoundFile();
+      try {
+        await loadRemoteData();
+      } catch (err) {
+        console.error(err);
+        setFileStatus("读取仓库失败：" + ((err && err.message) || "请检查 Worker 密钥"), false);
+        showToast("读取仓库失败：" + ((err && err.message) || "请稍后重试"));
+      }
     }
 
     function showLogin(msg) {
@@ -2019,13 +2104,19 @@
       if (pass) pass.value = "";
     }
 
-    function tryLogin(username, password) {
-      const users = loadUsers();
-      const user = users.find((u) => u.username === String(username || "").trim() && u.password === String(password || ""));
-      if (!user) return false;
-      enterApp(user);
-      showToast(`已进入 · ${roleLabel(user.role)}`);
-      return true;
+    async function tryLogin(username, password) {
+      const data = await api("/login", {
+        method: "POST",
+        body: JSON.stringify({ username, password })
+      });
+      if (!data.user) throw new Error("登录失败");
+      await enterApp({
+        username: data.user.username,
+        password,
+        role: data.user.role,
+        bind: data.user.bind || ""
+      });
+      showToast(`已进入 · ${roleLabel(data.user.role)}`);
     }
 
     function renderAccountList() {
@@ -2094,13 +2185,16 @@
       return row;
     }
 
-    document.getElementById("loginForm").addEventListener("submit", (e) => {
+    document.getElementById("loginForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const username = document.getElementById("loginUser").value;
       const password = document.getElementById("loginPass").value;
-      if (!tryLogin(username, password)) {
-        const err = document.getElementById("loginError");
-        err.textContent = "账号或密码不对";
+      const err = document.getElementById("loginError");
+      err.classList.remove("show");
+      try {
+        await tryLogin(username, password);
+      } catch (ex) {
+        err.textContent = (ex && ex.message) || "账号或密码不对";
         err.classList.add("show");
       }
     });
@@ -2249,26 +2343,26 @@
       if (editingId) deleteRow(editingId);
     });
 
-    document.getElementById("entryForm").addEventListener("submit", (e) => {
+    document.getElementById("entryForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const row = readForm();
       const filled = ALL_FIELDS.some((f) => String(row[f.key] || "") !== "");
       if (!filled) return showToast("请至少填写一项");
       if (canEditField("projectName") && !row.projectName) return showToast("请填写项目名称");
 
+      const wasEdit = !!editingId;
       if (editingId) {
         const idx = state.rows.findIndex((r) => r.id === editingId);
         if (idx < 0) return showToast("找不到这条记录");
         if (!visibleRows().some((r) => r.id === editingId)) return showToast("没有这条记录的权限");
         state.rows[idx] = mergeWritable(state.rows[idx], row);
-        persist();
-        showToast("已保存你有权限的字段");
       } else {
         if (!access().canCreate) return showToast("当前账号不能新建项目");
         state.rows.push(applyRoleToNewRow(row));
-        persist();
-        showToast("已追加到总表末尾");
       }
+      const ok = await persist({ message: wasEdit ? `${currentUser.username} 修改项目` : `${currentUser.username} 新增项目` });
+      if (!ok) return;
+      showToast(wasEdit ? "已保存并写回仓库" : "已追加并写回仓库");
       clearDraft();
       document.getElementById("draftBar").classList.remove("show");
       fillForm(applyRoleToNewRow(emptyRow()));
@@ -2305,7 +2399,6 @@
     window.addEventListener("beforeunload", persistDraftFromForm);
 
     (function boot() {
-      loadUsers();
       const sessionUser = loadSession();
       if (sessionUser) enterApp(sessionUser);
       else showLogin();
