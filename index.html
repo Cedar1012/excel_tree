@@ -761,7 +761,7 @@
     <form class="login-card" id="loginForm" autocomplete="on">
       <div class="eyebrow">PROJECT LEDGER</div>
       <h1>登录项目台账</h1>
-      <p class="login-desc">先登录再进入同一张总表。页面会按账号隐藏行和字段，这是前端限制，不是服务端保密。</p>
+      <p class="login-desc">请输入账号和密码后进入台账。</p>
       <div class="login-error" id="loginError">账号或密码不对</div>
       <div class="field">
         <label for="loginUser">账号</label>
@@ -772,10 +772,6 @@
         <input id="loginPass" name="password" type="password" required autocomplete="current-password" />
       </div>
       <button type="submit" class="btn-primary" style="width:100%;margin-top:6px">进入台账</button>
-      <div class="login-hint">
-        默认管理员：<code>admin</code> / <code>admin123</code><br />
-        其他角色：登录后点「账号」添加，或把账号写进页面里的 <code>BUILTIN_USERS</code> 再发布。绑定名称必须和表格完全一致。
-      </div>
     </form>
   </div>
 
@@ -785,7 +781,7 @@
         <div class="eyebrow">PROJECT LEDGER</div>
         <h1>项目台账</h1>
         <p class="subtitle" id="pageSubtitle">登录后按权限查看同一张总表。</p>
-        <p class="file-status" id="fileStatus">数据先存在浏览器。第一次保存时选一次表格即可。</p>
+        <p class="file-status" id="fileStatus">保存会记在这个浏览器里，不会改仓库或磁盘上的 Excel。</p>
       </div>
       <div class="stats">
         <div class="stat"><b id="statCount">0</b><span id="statCountLabel">项目条数</span></div>
@@ -1308,18 +1304,8 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       renderTable();
       updateStats();
-      if (currentUser && roleOf(currentUser) === "admin") ensureFileThenSave();
-    }
-
-    async function ensureFileThenSave() {
-      if (!fileHandle) {
-        const ok = await bindExcel({ fromSave: true });
-        if (!ok) {
-          setFileStatus("已保存在浏览器。第一次保存请选中同目录 Excel，之后会自动写回。", false);
-          return;
-        }
-      }
-      await writeBoundFile(false);
+      writeBoundFile(false);
+      setFileStatus(`已保存到此浏览器 · ${state.rows.length} 条。需要文件时请点「导出 Excel」。`, true);
     }
 
     function idbReq(mode, fn) {
@@ -1361,16 +1347,14 @@
     async function writeBoundFile(showOk) {
       if (!fileHandle) return;
       try {
-        if (!(await ensurePermission(fileHandle))) throw new Error("no permission");
+        if (!(await ensurePermission(fileHandle))) return;
         const writable = await fileHandle.createWritable();
         await writable.write(workbookBytes(state.rows));
         await writable.close();
-        setFileStatus(`已自动保存到 ${fileHandle.name || EXCEL_NAME} · ${state.rows.length} 条`, true);
-        if (showOk) showToast("已写入同目录表格");
+        if (showOk) showToast("已写入本机表格");
       } catch (err) {
         console.error(err);
         fileHandle = null;
-        setFileStatus("表格写入失败。请再点一次「绑定表格」。", false);
       }
     }
 
@@ -1381,72 +1365,48 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       renderTable();
       updateStats();
-      setFileStatus(`已绑定 ${fileHandle.name} · ${rows.length} 条。之后保存会自动写回。`, true);
+      setFileStatus(`已载入 ${fileHandle.name} · ${rows.length} 条。保存记在这个浏览器里。`, true);
     }
 
-    async function bindExcel(opts = {}) {
-      if (!window.showSaveFilePicker && !window.showOpenFilePicker) return false;
-      try {
-        let handle = null;
-        if (opts.fromSave && window.showSaveFilePicker) {
-          handle = await window.showSaveFilePicker({
-            suggestedName: EXCEL_NAME,
-            types: [{
-              description: "Excel",
-              accept: { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"] }
-            }]
-          });
-        } else if (window.showOpenFilePicker) {
-          const picked = await window.showOpenFilePicker({
-            types: [{
-              description: "Excel",
-              accept: { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"] }
-            }],
-            excludeAcceptAllOption: false,
-            multiple: false
-          });
-          handle = picked[0];
+    async function loadSameDirExcel() {
+      const urls = ["./" + encodeURIComponent(EXCEL_NAME), "./" + EXCEL_NAME];
+      for (const url of urls) {
+        try {
+          const res = await fetch(url, { cache: "no-store" });
+          if (!res.ok) continue;
+          const rows = parseWorkbookBuffer(new Uint8Array(await res.arrayBuffer()));
+          if (!rows.length) continue;
+          state.rows = rows;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          renderTable();
+          updateStats();
+          setFileStatus(`已载入同目录《${EXCEL_NAME}》· ${rows.length} 条。保存只记在这个浏览器里。`, true);
+          return true;
+        } catch (err) {
+          console.error(err);
         }
-        if (!handle) return false;
-        if (!(await ensurePermission(handle))) return false;
-        fileHandle = handle;
-        await saveHandle(handle);
-        if (!opts.fromSave) {
-          const file = await handle.getFile();
-          const diskRows = parseWorkbookBuffer(new Uint8Array(await file.arrayBuffer()));
-          if (diskRows.length) {
-            state.rows = diskRows;
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-            renderTable();
-            updateStats();
-          }
-        }
-        setFileStatus(`已记住 ${handle.name}。之后保存会自动写回。`, true);
-        return true;
-      } catch (err) {
-        if (err && err.name === "AbortError") return false;
-        console.error(err);
-        return false;
       }
+      return false;
     }
 
     async function bootBoundFile() {
       try {
         const handle = await loadHandle();
-        if (!handle) {
-          setFileStatus("数据先存在浏览器。第一次保存时选中同目录 Excel，之后自动写回。", false);
+        if (handle && await ensurePermission(handle)) {
+          fileHandle = handle;
+          if (!state.rows.length) await loadBoundFile();
+          else setFileStatus(`已保存到此浏览器 · ${state.rows.length} 条。需要文件时请点「导出 Excel」。`, true);
           return;
         }
-        if (!(await ensurePermission(handle))) {
-          setFileStatus("浏览器还记得表格。再保存一次并允许写入，就会继续自动写回。", false);
-          return;
-        }
-        fileHandle = handle;
-        await loadBoundFile();
       } catch (err) {
         console.error(err);
-        setFileStatus("数据先存在浏览器。第一次保存时选中同目录 Excel 即可。", false);
       }
+      if (state.rows.length) {
+        setFileStatus(`已保存到此浏览器 · ${state.rows.length} 条。需要文件时请点「导出 Excel」。`, true);
+        return;
+      }
+      const ok = await loadSameDirExcel();
+      if (!ok) setFileStatus("还没有数据。保存会记在这个浏览器里，需要文件时请点「导出 Excel」。", false);
     }
 
     function setFileStatus(text, ok) {
@@ -2025,7 +1985,6 @@
       document.getElementById("exportBtn").hidden = !a.canExport;
       document.getElementById("clearAllBtn").hidden = !a.canClear;
       document.getElementById("usersBtn").hidden = !a.canManageUsers;
-      document.getElementById("fileStatus").hidden = roleOf(currentUser) !== "admin";
       renderColorGroups();
       bindCalc();
       renderTable();
@@ -2038,7 +1997,7 @@
       document.getElementById("loginGate").hidden = true;
       document.getElementById("appRoot").hidden = false;
       applyShell();
-      if (roleOf(user) === "admin") bootBoundFile();
+      bootBoundFile();
     }
 
     function showLogin(msg) {
