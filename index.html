@@ -897,7 +897,7 @@
   <div class="toast" id="toast"></div>
 
   <script>
-    const API_BASE = "https://excel-tree-save.cedar1012.workers.dev";
+    const API_BASE = "https://api.cedar.beer";
     const STORAGE_KEY = "excel_tree_project_ledger_v2";
     const DRAFT_KEY = "excel_tree_project_ledger_draft_v3";
     const BACKUP_KEY = "excel_tree_project_ledger_backups_v2";
@@ -1324,9 +1324,9 @@
         res = await fetch(API_BASE + path, Object.assign({}, opts, { headers, signal: ctrl.signal }));
       } catch (err) {
         if (err && (err.name === "AbortError" || /abort/i.test(String(err.message || "")))) {
-          throw new Error("登录服务超时。当前保存接口在 Cloudflare workers.dev，国内网络常访问不了。");
+          throw new Error("登录服务超时。请确认能打开 https://api.cedar.beer");
         }
-        throw new Error("连不上登录服务。请确认能打开 excel-tree-save.cedar1012.workers.dev，或使用可访问 Cloudflare 的网络。");
+        throw new Error("连不上登录服务。请确认能打开 https://api.cedar.beer");
       } finally {
         clearTimeout(timer);
       }
