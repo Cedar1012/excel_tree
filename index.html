@@ -771,7 +771,7 @@
         <label for="loginPass">密码</label>
         <input id="loginPass" name="password" type="password" required autocomplete="current-password" />
       </div>
-      <button type="submit" class="btn-primary" style="width:100%;margin-top:6px">进入台账</button>
+      <button type="submit" class="btn-primary" id="loginBtn" style="width:100%;margin-top:6px">进入台账</button>
     </form>
   </div>
 
@@ -1317,7 +1317,19 @@
 
     async function api(path, opts = {}) {
       const headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
-      const res = await fetch(API_BASE + path, Object.assign({}, opts, { headers }));
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 12000);
+      let res;
+      try {
+        res = await fetch(API_BASE + path, Object.assign({}, opts, { headers, signal: ctrl.signal }));
+      } catch (err) {
+        if (err && (err.name === "AbortError" || /abort/i.test(String(err.message || "")))) {
+          throw new Error("登录服务超时。当前保存接口在 Cloudflare workers.dev，国内网络常访问不了。");
+        }
+        throw new Error("连不上登录服务。请确认能打开 excel-tree-save.cedar1012.workers.dev，或使用可访问 Cloudflare 的网络。");
+      } finally {
+        clearTimeout(timer);
+      }
       let data = null;
       try { data = await res.json(); } catch { data = null; }
       if (!res.ok || (data && data.ok === false)) {
@@ -2190,12 +2202,22 @@
       const username = document.getElementById("loginUser").value;
       const password = document.getElementById("loginPass").value;
       const err = document.getElementById("loginError");
+      const btn = document.getElementById("loginBtn");
       err.classList.remove("show");
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "正在登录…";
+      }
       try {
         await tryLogin(username, password);
       } catch (ex) {
         err.textContent = (ex && ex.message) || "账号或密码不对";
         err.classList.add("show");
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = "进入台账";
+        }
       }
     });
     document.getElementById("logoutBtn").addEventListener("click", () => {
